@@ -1,5 +1,5 @@
-#ifndef __WRITER_H__
-#define __WRITER_H__
+#ifndef __BPWRITER_H__
+#define __BPWRITER_H__
 
 // #IO# include IO library
 #include <adios2.h>
@@ -8,11 +8,16 @@
 #include "gray-scott.h"
 #include "settings.h"
 
-class Writer
+/**
+ * @brief ADIOS2 Tutorial writer for writing to a custom .bp
+ * file format.
+ *
+ */
+class Adios2Writer
 {
 public:
-    Writer(const Settings &settings, const GrayScott &sim, const MPI_Comm comm,
-           const adios2::IO &io);
+    Adios2Writer(const Settings &settings, const GrayScott &sim,
+                 const adios2::IO &&io);
     void open(const std::string &fname);
     void write(int step, const GrayScott &sim);
     void close();
@@ -20,12 +25,7 @@ public:
     void print_settings();
 
 protected:
-    const Settings &settings;
-    MPI_Comm comm;
-    int nproc, rank;
-    int err, cmode;
-    MPI_File fh;
-    MPI_Datatype memtype, filetype;
+    const Settings &_settings;
 
     struct header
     {
@@ -38,8 +38,11 @@ protected:
     //#IO# declare ADIOS variables for engine, io, variables
     adios2::IO _io;
     adios2::Engine _writer;
-    adios2::Variable<int> varStep;
-    adios2::Variable<double> varU;
+    // 3D variables
+    adios2::Variable<double> _varU;
+    adios2::Variable<double> _varV;
+    // information: <int> step   is a single value
+    adios2::Variable<int> _varStep;
 };
 
 #endif

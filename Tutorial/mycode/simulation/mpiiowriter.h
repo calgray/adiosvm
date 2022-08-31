@@ -1,5 +1,5 @@
-#ifndef __BPWRITER_H__
-#define __BPWRITER_H__
+#ifndef __WRITER_H__
+#define __WRITER_H__
 
 // #IO# include IO library
 #include <adios2.h>
@@ -8,11 +8,11 @@
 #include "gray-scott.h"
 #include "settings.h"
 
-class BPWriter
+class MPIIOWriter
 {
 public:
-    BPWriter(const Settings &settings, const GrayScott &sim,
-             const MPI_Comm comm, const adios2::IO &io);
+    MPIIOWriter(const Settings &settings, const GrayScott &sim,
+                const MPI_Comm comm);
     void open(const std::string &fname);
     void write(int step, const GrayScott &sim);
     void close();
@@ -22,7 +22,9 @@ public:
 protected:
     const Settings &settings;
     MPI_Comm comm;
+    int nproc, rank;
     int err, cmode;
+    MPI_File fh;
     MPI_Datatype memtype, filetype;
 
     struct header
@@ -32,12 +34,6 @@ protected:
         unsigned long long y;
         unsigned long long x;
     };
-
-    //#IO# declare ADIOS variables for engine, io, variables
-    adios2::IO _io;
-    adios2::Engine _writer;
-    adios2::Variable<int> varStep;
-    adios2::Variable<double> varU;
 };
 
 #endif

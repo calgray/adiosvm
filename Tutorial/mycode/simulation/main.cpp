@@ -4,9 +4,10 @@
 #include <vector>
 
 // #IO# include IO library
+#include "oompi.hpp"
 #include <mpi.h>
 
-#include "bpwriter.h"
+#include "adios2writer.h"
 #include "gray-scott.h"
 
 void print_settings(const Settings &s)
@@ -35,17 +36,17 @@ void print_simulator_settings(const GrayScott &s)
 
 int main(int argc, char **argv)
 {
-    MPI_Init(&argc, &argv);
-    int rank, procs, wrank;
+    oompi::MPI mpi(&argc, &argv);
+    auto world = mpi.comm_world();
+    int wrank = world.rank();
 
-    MPI_Comm_rank(MPI_COMM_WORLD, &wrank);
-
+    // Custom communicator group. We don't necessarily need to
+    // create this but a seperate group is assigned per program
+    // as cross messaging isn't needed.
     const unsigned int color = 1;
-    MPI_Comm comm;
-    MPI_Comm_split(MPI_COMM_WORLD, color, wrank, &comm);
-
-    MPI_Comm_rank(comm, &rank);
-    MPI_Comm_size(comm, &procs);
+    auto comm = world.split(color, wrank);
+    int rank = comm.rank();
+    int procs = comm.size();
 
     if (argc < 2)
     {
@@ -54,23 +55,22 @@ int main(int argc, char **argv)
             std::cerr << "Too few arguments" << std::endl;
             std::cerr << "Usage: gray-scott settings.json" << std::endl;
         }
-        MPI_Abort(MPI_COMM_WORLD, -1);
+        world.abort(EXIT_FAILURE);
     }
 
     Settings settings = Settings::from_json(argv[1]);
 
-    GrayScott sim(settings, comm);
+    GrayScott sim(settings, comm.get());
     sim.init();
 
     // #IO# Need to initialize IO library
     //
-    adios2::ADIOS adios("adios2.xml", comm);
-    adios2::IO io = adios.DeclareIO("SimulationOutput");
+    // MPIIOWriter writer(settings, sim, comm);
 
-    BPWriter writer(settings, sim, comm, io);
+    adios2::ADIOS adios("adios2.xml", comm.get());
+    Adios2Writer writer(settings, sim, adios.DeclareIO("SimulationOutput"));
 
     writer.open(settings.output);
-
     if (rank == 0)
     {
         writer.print_settings();
@@ -97,7 +97,5 @@ int main(int argc, char **argv)
         }
         writer.write(i, sim);
     }
-
     writer.close();
-    MPI_Finalize();
 }

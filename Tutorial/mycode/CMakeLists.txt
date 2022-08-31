@@ -20,8 +20,8 @@ add_executable(gray-scott
   simulation/main.cpp
   simulation/gray-scott.cpp
   simulation/settings.cpp
-  simulation/writer.cpp
-  simulation/bpwriter.cpp
+  simulation/mpiiowriter.cpp
+  simulation/adios2writer.cpp
 )
 
 # #IO# add link dependency adios2::cxx11_mpi

@@ -1,4 +1,4 @@
-#include "bpwriter.h"
+#include "mpiiowriter.h"
 
 #include <iostream>
 
@@ -14,9 +14,9 @@
         }                                                                      \
     }
 
-BPWriter::BPWriter(const Settings &settings, const GrayScott &sim,
-                   const MPI_Comm comm, const adios2::IO &io)
-: settings(settings), comm(comm), _io(io)
+MPIIOWriter::MPIIOWriter(const Settings &settings, const GrayScott &sim,
+                         const MPI_Comm comm)
+: settings(settings), comm(comm)
 {
     // #IO# make initializations, declarations as necessary
     // information from settings
@@ -38,15 +38,6 @@ BPWriter::BPWriter(const Settings &settings, const GrayScott &sim,
     // output data starts at offset: {1, 1, 1}
 
     // information: <int> step   is a single value
-
-    varStep = _io.DefineVariable<int>("step");
-    varU =
-        _io.DefineVariable<double>("U", {settings.L, settings.L, settings.L},
-                                   {sim.offset_z, sim.offset_y, sim.offset_x},
-                                   {sim.size_z, sim.size_y, sim.size_x}, true);
-    varU.SetMemorySelection(
-        {{1, 1, 1}, {sim.size_z + 2, sim.size_y + 2, sim.size_x + 2}});
-    _io.DefineAttribute<double>("F", settings.F);
 
     /*
      *  MPI Subarray data type for writing/reading parallel distributed arrays
@@ -74,27 +65,61 @@ BPWriter::BPWriter(const Settings &settings, const GrayScott &sim,
     CHECK_ERR(MPI_Type_commit for file type)
 }
 
-void BPWriter::open(const std::string &fname)
+void MPIIOWriter::open(const std::string &fname)
 {
-    _writer = _io.Open(fname, adios2::Mode::Write);
+    int cmode;
+    MPI_Info info;
+    MPI_Offset headersize = sizeof(header);
+
+    /* Users can set customized I/O hints in info object */
+    info = MPI_INFO_NULL; /* no user I/O hint */
+
+    /* set file open mode */
+    cmode = MPI_MODE_CREATE;  /* to create a new file */
+    cmode |= MPI_MODE_WRONLY; /* with write-only permission */
+
+    /* collectively open a file, shared by all processes in MPI_COMM_WORLD */
+    std::string s = fname + ".u";
+    err = MPI_File_open(comm, s.c_str(), cmode, info, &fh);
+    CHECK_ERR(MPI_File_open to write)
+
+    int rank;
+    MPI_Comm_rank(comm, &rank);
+    if (!rank)
+    {
+        unsigned long long L = static_cast<unsigned long long>(settings.L);
+        struct header h = {L, L, L};
+        MPI_Status status;
+        MPI_File_write(fh, &h, sizeof(h), MPI_BYTE, &status);
+    }
+
+    err =
+        MPI_File_set_view(fh, headersize, MPI_DOUBLE, filetype, "native", info);
+    CHECK_ERR(MPI_File_set_view)
+    MPI_Barrier(comm);
 }
 
-void BPWriter::write(int step, const GrayScott &sim)
+void MPIIOWriter::write(int step, const GrayScott &sim)
 {
     /* sim.u_ghost() provides access to the U variable as is */
     /* sim.u_noghost() provides a contiguous copy without the ghost cells */
     const std::vector<double> &u = sim.u_ghost();
     const std::vector<double> &v = sim.v_ghost();
-    _writer.BeginStep();
-    _writer.Put(varStep, step);
-    _writer.Put(varU, u.data());
-    _writer.EndStep();
+
+    MPI_Status status;
+    err = MPI_File_write_all(fh, u.data(), 1, memtype, &status);
+    CHECK_ERR(MPI_File_write_all)
 }
 
-void BPWriter::close() { _writer.Close(); }
-
-void BPWriter::print_settings()
+void MPIIOWriter::close()
 {
-    std::cout << "Simulation writes data using engine type: "
-              << _io.EngineType() << std::endl;
+    /* collectively close the file */
+    err = MPI_File_close(&fh);
+    CHECK_ERR(MPI_File_close);
+}
+
+void MPIIOWriter::print_settings()
+{
+    std::cout << "Simulation writes data using engine type:              "
+              << "native MPI-IO" << std::endl;
 }
