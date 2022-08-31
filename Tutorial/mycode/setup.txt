@@ -1,0 +1,14 @@
+
+
+$ source /software/projects/courses01/adios/adios-tutorial-env.sh
+$ adios2-config -v
+
+# cmake install prefex $MYSCRATCH/gs-mpiio
+
+$ salloc -p work -n 64 -N 1 -c 1 -A courses01 --qos=high -t 01:00:00
+
+$ srun --exclusive --ntasks=16 --ntasks-per-node=16 ./gray-scott settings-files.json
+$ ls -l data.u
+$ srun --exclusive --ntasks=1 --ntasks-per-node=1 python3 ./gsplot.py -i data.u -o u
+$ ls -l u*.png
+$ srun --exclusive --ntasks=4 --ntasks-per-node=4 ./pdf-calc data.u data 100
